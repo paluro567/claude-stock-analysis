@@ -184,25 +184,39 @@ function TickerSlot({ index, value, onChange, data, loading, error }) {
     if (upper) onChange(upper)
   }
 
+  const handleClear = () => { setInput(''); onChange(null) }
+
   return (
     <div className="compare-slot" style={{ borderTop: `3px solid ${color}` }}>
       <div className="compare-slot-label" style={{ color }}>Stock {index + 1}</div>
-      <form onSubmit={handleSubmit} className="compare-slot-form">
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value.toUpperCase())}
-          placeholder="Enter ticker..."
-          className="compare-input"
-        />
-        <button type="submit" className="compare-btn" style={{ background: color }}>Go</button>
-        {value && (
-          <button type="button" className="compare-clear-btn" onClick={() => { setInput(''); onChange(null) }}>✕</button>
-        )}
-      </form>
+
+      {/* Show loaded stock prominently, hide input form */}
+      {data && !loading ? (
+        <div className="compare-slot-loaded">
+          <div className="compare-slot-loaded-info">
+            <span className="compare-slot-ticker" style={{ color }}>{data.ticker}</span>
+            <span className="compare-slot-fullname">{data.name}</span>
+          </div>
+          <button className="compare-slot-remove" onClick={handleClear} title="Remove">✕</button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="compare-slot-form">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value.toUpperCase())}
+            placeholder="Enter ticker..."
+            className="compare-input"
+          />
+          <button type="submit" className="compare-btn" style={{ background: color }}>Go</button>
+        </form>
+      )}
+
       {loading && <div className="compare-slot-status">Loading…</div>}
-      {error && <div className="compare-slot-status error">{error}</div>}
-      {data && !loading && (
-        <div className="compare-slot-name">{data.name} <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>({data.ticker})</span></div>
+      {error && (
+        <div className="compare-slot-status error" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{error}</span>
+          <button className="compare-slot-remove" onClick={handleClear} title="Clear">✕</button>
+        </div>
       )}
     </div>
   )

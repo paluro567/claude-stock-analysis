@@ -414,11 +414,53 @@
 
 .compare-slot-status.error { color: #f87171; }
 
-.compare-slot-name {
-  margin-top: 0.5rem;
-  font-size: 0.85rem;
+/* Loaded stock display */
+.compare-slot-loaded {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.compare-slot-loaded-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.compare-slot-ticker {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.compare-slot-fullname {
+  font-size: 0.78rem;
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compare-slot-remove {
+  flex-shrink: 0;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 6px;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 0.8rem;
   font-weight: 600;
-  color: #e0e0e0;
+  padding: 0.3rem 0.55rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.compare-slot-remove:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: #ef4444;
 }
 
 /* ===== Overvaluation Bar ===== */
