@@ -11,6 +11,7 @@ import {
   Label,
 } from 'recharts'
 import axios from 'axios'
+import { cacheGet, cacheSet } from '../utils/stockCache'
 
 function formatPrice(v) {
   if (v == null) return 'N/A'
@@ -50,11 +51,18 @@ function StockChart({ ticker }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    const cached = cacheGet(ticker)
+    if (cached) {
+      setData(cached)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     setData(null)
     axios.get(`/api/stock/${ticker}`)
       .then(res => {
+        cacheSet(ticker, res.data)
         setData(res.data)
         setLoading(false)
       })

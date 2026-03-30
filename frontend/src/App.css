@@ -508,3 +508,122 @@
   color: #e0e0e0;
   font-weight: 500;
 }
+
+/* Compare sub-tabs */
+.compare-subtabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid #2a2d3a;
+  padding-bottom: 0;
+  margin-bottom: 0.5rem;
+}
+
+.compare-subtab {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.4rem 1rem 0.6rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+}
+
+.compare-subtab:hover { color: #e0e0e0; }
+
+.compare-subtab.active {
+  color: #e0e0e0;
+  border-bottom-color: #5c6bc0;
+}
+
+/* Metrics table */
+.metrics-table-wrap {
+  overflow-x: auto;
+  border-radius: 6px;
+}
+
+.metrics-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.8rem;
+  min-width: 400px;
+}
+
+.metrics-table th {
+  background: #1a1d27;
+  color: #9ca3af;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.75rem;
+  text-align: center;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.metrics-table th:first-child {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: #1a1d27;
+  z-index: 2;
+}
+
+.metrics-table td {
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid #2a2d3a;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.metrics-table td:first-child {
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: #0f1117;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  min-width: 150px;
+  z-index: 1;
+}
+
+.metrics-table tr.category-row td {
+  background: rgba(92,107,192,0.12);
+  color: #5c6bc0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.75rem;
+}
+
+.metrics-table tr:hover td:not(:first-child) {
+  filter: brightness(1.1);
+}
+
+/* Loading bar */
+.compare-loading {
+  font-size: 0.8rem;
+  color: #6b7280;
+  padding: 0.5rem 0;
+}
+
+.compare-progress {
+  height: 3px;
+  background: #2a2d3a;
+  border-radius: 2px;
+  margin: 0.4rem 0 1rem;
+  overflow: hidden;
+}
+
+.compare-progress-fill {
+  height: 100%;
+  background: #5c6bc0;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}

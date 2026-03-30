@@ -11,6 +11,7 @@ import {
   LabelList,
 } from 'recharts'
 import axios from 'axios'
+import { cacheGet, cacheSet } from '../utils/stockCache'
 
 function fmt(v, decimals = 1) {
   if (v == null) return 'N/A'
@@ -29,12 +30,8 @@ const CustomBarTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
       <div style={{
-        background: '#232635',
-        border: '1px solid #2a2d3a',
-        borderRadius: 6,
-        padding: '6px 10px',
-        fontSize: '0.78rem',
-        color: '#e0e0e0',
+        background: '#232635', border: '1px solid #2a2d3a',
+        borderRadius: 6, padding: '6px 10px', fontSize: '0.78rem', color: '#e0e0e0',
       }}>
         <div style={{ color: '#9ca3af', marginBottom: 2 }}>{label}</div>
         <div>PE: <strong>{payload[0]?.value?.toFixed(1) ?? 'N/A'}</strong></div>
@@ -46,158 +43,106 @@ const CustomBarTooltip = ({ active, payload, label }) => {
 
 function PEPanel({ ticker }) {
   const [data, setData] = useState(null)
+  const [peers, setPeers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  // Fetch main stock data (likely already cached from StockChart)
   useEffect(() => {
+    const cached = cacheGet(ticker)
+    if (cached) {
+      setData(cached)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
-    setData(null)
     axios.get(`/api/stock/${ticker}`)
       .then(res => {
+        cacheSet(ticker, res.data)
         setData(res.data)
         setLoading(false)
       })
       .catch(err => {
-        setError(err.response?.data?.detail || err.message || 'Failed to load data')
+        setError(err.response?.data?.detail || err.message || 'Failed to load')
         setLoading(false)
       })
   }, [ticker])
 
-  if (loading) {
-    return (
-      <div className="panel">
-        <div className="loading-state">Loading PE data…</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="panel">
-        <div className="error-state">Error: {error}</div>
-      </div>
-    )
-  }
-
-  // Build bar chart data
-  const barData = []
-
-  if (data.trailingPE != null) {
-    barData.push({ name: ticker, pe: data.trailingPE, type: 'current' })
-  }
-
-  if (data.sectorPE != null) {
-    barData.push({ name: 'Sector Avg', pe: data.sectorPE, type: 'sector' })
-  }
-
-  if (data.peers) {
-    for (const peer of data.peers) {
-      if (peer.trailingPE != null) {
-        barData.push({ name: peer.ticker, pe: peer.trailingPE, type: 'peer' })
-      }
+  // Fetch peers separately so main data renders first
+  useEffect(() => {
+    setPeers([])
+    const cacheKey = `${ticker}:peers`
+    const cached = cacheGet(cacheKey)
+    if (cached) {
+      setPeers(cached.peers || [])
+      return
     }
+    axios.get(`/api/stock/${ticker}/peers`)
+      .then(res => {
+        cacheSet(cacheKey, res.data)
+        setPeers(res.data.peers || [])
+      })
+      .catch(() => setPeers([]))
+  }, [ticker])
+
+  if (loading) return <div className="panel"><div className="loading-state">Loading PE data…</div></div>
+  if (error) return <div className="panel"><div className="error-state">Error: {error}</div></div>
+
+  const barData = []
+  if (data.trailingPE != null) barData.push({ name: ticker, pe: data.trailingPE, type: 'current' })
+  if (data.sectorPE != null) barData.push({ name: 'Sector Avg', pe: data.sectorPE, type: 'sector' })
+  for (const peer of peers) {
+    if (peer.trailingPE != null) barData.push({ name: peer.ticker, pe: peer.trailingPE, type: 'peer' })
   }
 
-  const getBarColor = (type) => {
-    if (type === 'current') return '#5c6bc0'
-    if (type === 'sector') return '#6b7280'
-    return '#4682b4'
-  }
+  const getBarColor = (type) => type === 'current' ? '#5c6bc0' : type === 'sector' ? '#6b7280' : '#4682b4'
 
   return (
     <div className="panel">
-      {/* Section 1: Current Valuation */}
       <div className="pe-section-title">Current Valuation</div>
       <div className="pe-valuation-grid">
-        <div className="pe-val-item">
-          <div className="pe-val-label">Trailing PE</div>
-          <div className={`pe-val-value${data.trailingPE == null ? ' muted' : ''}`}>
-            {fmt(data.trailingPE)}
+        {[
+          { label: 'Trailing PE', value: fmt(data.trailingPE), muted: data.trailingPE == null },
+          { label: 'Forward PE', value: fmt(data.forwardPE), muted: data.forwardPE == null },
+          { label: '2yr Forward PE', value: fmt(data.twoYearForwardPE), muted: data.twoYearForwardPE == null },
+          { label: 'Sector Avg PE', value: data.sectorPE ?? 'N/A', muted: data.sectorPE == null },
+          { label: 'Sector', value: data.sector || 'N/A', muted: !data.sector, small: true },
+          { label: 'Industry', value: data.industry || 'N/A', muted: !data.industry, small: true },
+          { label: 'Market Cap', value: fmtLarge(data.marketCap), muted: data.marketCap == null },
+        ].map(item => (
+          <div key={item.label} className="pe-val-item">
+            <div className="pe-val-label">{item.label}</div>
+            <div className={`pe-val-value${item.muted ? ' muted' : ''}`} style={item.small ? { fontSize: '0.8rem' } : {}}>
+              {item.value}
+            </div>
           </div>
-        </div>
-        <div className="pe-val-item">
-          <div className="pe-val-label">Forward PE</div>
-          <div className={`pe-val-value${data.forwardPE == null ? ' muted' : ''}`}>
-            {fmt(data.forwardPE)}
-          </div>
-        </div>
-        <div className="pe-val-item">
-          <div className="pe-val-label">Sector</div>
-          <div className={`pe-val-value${!data.sector ? ' muted' : ''}`} style={{ fontSize: '0.85rem' }}>
-            {data.sector || 'N/A'}
-          </div>
-        </div>
-        <div className="pe-val-item">
-          <div className="pe-val-label">Industry</div>
-          <div className={`pe-val-value${!data.industry ? ' muted' : ''}`} style={{ fontSize: '0.8rem' }}>
-            {data.industry || 'N/A'}
-          </div>
-        </div>
-        <div className="pe-val-item">
-          <div className="pe-val-label">Market Cap</div>
-          <div className={`pe-val-value${data.marketCap == null ? ' muted' : ''}`}>
-            {fmtLarge(data.marketCap)}
-          </div>
-        </div>
-        <div className="pe-val-item">
-          <div className="pe-val-label">Sector Avg PE</div>
-          <div className={`pe-val-value${data.sectorPE == null ? ' muted' : ''}`}>
-            {data.sectorPE ?? 'N/A'}
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Section 2: PE Comparison chart */}
       <div className="pe-section-title">PE Comparison</div>
       {barData.length > 0 ? (
         <ResponsiveContainer width="100%" height={220}>
-          <BarChart
-            data={barData}
-            layout="vertical"
-            margin={{ top: 4, right: 50, left: 10, bottom: 4 }}
-          >
+          <BarChart data={barData} layout="vertical" margin={{ top: 4, right: 50, left: 10, bottom: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#2a2d3a" horizontal={false} />
-            <XAxis
-              type="number"
-              tick={{ fill: '#6b7280', fontSize: 11 }}
-              tickLine={false}
-              axisLine={{ stroke: '#2a2d3a' }}
-            />
-            <YAxis
-              type="category"
-              dataKey="name"
-              tick={{ fill: '#9ca3af', fontSize: 11 }}
-              tickLine={false}
-              axisLine={false}
-              width={72}
-            />
+            <XAxis type="number" tick={{ fill: '#6b7280', fontSize: 11 }} tickLine={false} axisLine={{ stroke: '#2a2d3a' }} />
+            <YAxis type="category" dataKey="name" tick={{ fill: '#9ca3af', fontSize: 11 }} tickLine={false} axisLine={false} width={72} />
             <Tooltip content={<CustomBarTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
             <Bar dataKey="pe" radius={[0, 4, 4, 0]} barSize={18}>
-              {barData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={getBarColor(entry.type)} />
-              ))}
-              <LabelList
-                dataKey="pe"
-                position="right"
-                formatter={(v) => v?.toFixed(1)}
-                style={{ fill: '#9ca3af', fontSize: 10 }}
-              />
+              {barData.map((entry, i) => <Cell key={i} fill={getBarColor(entry.type)} />)}
+              <LabelList dataKey="pe" position="right" formatter={(v) => v?.toFixed(1)} style={{ fill: '#9ca3af', fontSize: 10 }} />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
       ) : (
-        <div className="loading-state" style={{ height: 120 }}>
-          No PE comparison data available
-        </div>
+        <div className="loading-state" style={{ height: 80 }}>Loading peer comparison…</div>
       )}
 
-      {/* Peer detail table */}
-      {data.peers && data.peers.length > 0 && (
+      {peers.length > 0 && (
         <div style={{ marginTop: '1rem' }}>
           <div className="pe-section-title">Peers</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.5rem' }}>
-            {data.peers.map(peer => (
+            {peers.map(peer => (
               <div key={peer.ticker} className="pe-val-item">
                 <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#e0e0e0', marginBottom: 2 }}>{peer.ticker}</div>
                 <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: 4 }}>{peer.name}</div>

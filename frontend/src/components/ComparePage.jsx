@@ -9,15 +9,170 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  Cell,
 } from 'recharts'
+import { cacheGet, cacheSet } from '../utils/stockCache'
 
 const STOCK_COLORS = ['#5c6bc0', '#14b8a6', '#f59e0b']
-const STOCK_LABELS = ['Stock A', 'Stock B', 'Stock C']
+
+const METRICS = [
+  // Valuation
+  { key: 'trailingPE',              label: 'P/E (TTM)',             category: 'Valuation',     lowerBetter: true,  pct: false },
+  { key: 'forwardPE',               label: 'Forward P/E',           category: 'Valuation',     lowerBetter: true,  pct: false },
+  { key: 'pegRatio',                label: 'PEG Ratio',             category: 'Valuation',     lowerBetter: true,  pct: false },
+  // Growth
+  { key: 'revenueGrowth',           label: 'Revenue Growth',        category: 'Growth',        lowerBetter: false, pct: true  },
+  { key: 'earningsGrowth',          label: 'EPS Growth',            category: 'Growth',        lowerBetter: false, pct: true  },
+  { key: 'fcfGrowth',               label: 'FCF Growth',            category: 'Growth',        lowerBetter: false, pct: true  },
+  // Profitability
+  { key: 'grossMargins',            label: 'Gross Margin',          category: 'Profitability', lowerBetter: false, pct: true  },
+  { key: 'operatingMargins',        label: 'Operating Margin',      category: 'Profitability', lowerBetter: false, pct: true  },
+  { key: 'returnOnEquity',          label: 'ROE',                   category: 'Profitability', lowerBetter: false, pct: true  },
+  // Balance Sheet
+  { key: 'debtToEquity',            label: 'Debt / Equity',         category: 'Balance Sheet', lowerBetter: true,  pct: false },
+  { key: 'currentRatio',            label: 'Current Ratio',         category: 'Balance Sheet', lowerBetter: false, pct: false },
+  // Momentum
+  { key: 'relativeStrength',        label: 'Rel. Strength vs S&P',  category: 'Momentum',      lowerBetter: false, pct: true  },
+  { key: 'heldPercentInstitutions', label: 'Institutional Own.',    category: 'Momentum',      lowerBetter: false, pct: true  },
+  { key: 'volumeTrend',             label: 'Volume Trend',          category: 'Momentum',      lowerBetter: false, pct: true  },
+]
+
+const CATEGORIES = ['Valuation', 'Growth', 'Profitability', 'Balance Sheet', 'Momentum']
+
+function rankColor(allValues, value, lowerBetter) {
+  if (value == null) return 'transparent'
+  const valid = allValues.filter(v => v != null).sort((a, b) => a - b)
+  if (valid.length < 2) return 'transparent'
+  const idx = valid.findIndex(v => Math.abs(v - value) < 1e-9)
+  const pct = idx / (valid.length - 1) // 0=lowest, 1=highest
+  const score = lowerBetter ? 1 - pct : pct
+  if (score >= 0.6) return 'rgba(34,197,94,0.2)'
+  if (score >= 0.33) return 'rgba(234,179,8,0.18)'
+  return 'rgba(239,68,68,0.2)'
+}
+
+function fmtVal(value, pct) {
+  if (value == null) return '—'
+  if (pct) return `${(value * 100).toFixed(1)}%`
+  return Number(value).toFixed(value > 100 ? 0 : value > 10 ? 1 : 2)
+}
 
 function fmt(v) {
   return v != null ? v.toFixed(1) : null
 }
+
+function MetricsTable({ stocksData, tickers, colors }) {
+  return (
+    <div className="metrics-table-wrap">
+      <table className="metrics-table">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            {tickers.map((t, i) => (
+              <th key={t}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                  {colors && colors[i] && (
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: colors[i], display: 'inline-block' }} />
+                  )}
+                  {t}
+                </span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {CATEGORIES.map(cat => {
+            const catMetrics = METRICS.filter(m => m.category === cat)
+            return [
+              <tr key={`cat-${cat}`} className="category-row">
+                <td colSpan={tickers.length + 1}>{cat}</td>
+              </tr>,
+              ...catMetrics.map(metric => {
+                const allValues = stocksData.map(s => s ? s[metric.key] : null)
+                return (
+                  <tr key={metric.key}>
+                    <td>{metric.label}</td>
+                    {stocksData.map((s, i) => {
+                      const val = s ? s[metric.key] : null
+                      const bg = rankColor(allValues, val, metric.lowerBetter)
+                      return (
+                        <td
+                          key={tickers[i]}
+                          style={{
+                            background: bg,
+                            color: val == null ? '#4b5563' : '#e0e0e0',
+                          }}
+                        >
+                          {fmtVal(val, metric.pct)}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              }),
+            ]
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ─── Overview Tab ────────────────────────────────────────────────────────────
+
+function OverviewTab({ positions }) {
+  const [loaded, setLoaded] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchAll() {
+      for (let i = 0; i < positions.length; i++) {
+        if (cancelled) break
+        const t = positions[i]
+        if (!cacheGet(t)) {
+          try {
+            const res = await axios.get(`/api/stock/${t}`)
+            cacheSet(t, res.data)
+          } catch (e) {}
+          await new Promise(r => setTimeout(r, 300))
+        }
+        if (!cancelled) setLoaded(prev => [...new Set([...prev, t])])
+      }
+    }
+    setLoaded([])
+    fetchAll()
+    return () => { cancelled = true }
+  }, [positions.join(',')])
+
+  const stocksData = loaded.map(t => cacheGet(t))
+  const total = positions.length
+  const done = loaded.length
+  const progress = total > 0 ? Math.round((done / total) * 100) : 0
+
+  return (
+    <div>
+      {done < total && (
+        <div>
+          <div className="compare-loading">Loading {done} / {total} tickers…</div>
+          <div className="compare-progress">
+            <div className="compare-progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      )}
+      {stocksData.length > 0 && (
+        <MetricsTable
+          stocksData={stocksData}
+          tickers={loaded}
+          colors={null}
+        />
+      )}
+      {stocksData.length === 0 && done === total && total === 0 && (
+        <div className="empty-state">No positions in portfolio.</div>
+      )}
+    </div>
+  )
+}
+
+// ─── Ticker Slot ─────────────────────────────────────────────────────────────
 
 function TickerSlot({ index, value, onChange, data, loading, error }) {
   const [input, setInput] = useState(value || '')
@@ -53,6 +208,8 @@ function TickerSlot({ index, value, onChange, data, loading, error }) {
   )
 }
 
+// ─── Overvaluation Bar ───────────────────────────────────────────────────────
+
 function OvervaluationBar({ data, color }) {
   if (!data) return null
 
@@ -67,7 +224,6 @@ function OvervaluationBar({ data, color }) {
     )
   }
 
-  // pct above/below sector average — clamped to [-60, +120] → mapped to 0-100%
   const rawPct = ((trailingPE - sectorPE) / sectorPE) * 100
   const clampMin = -60
   const clampMax = 120
@@ -113,7 +269,27 @@ function OvervaluationBar({ data, color }) {
   )
 }
 
-function ComparePage() {
+// ─── Custom Tooltip ──────────────────────────────────────────────────────────
+
+function CustomTooltip({ active, payload, label }) {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{ background: '#232635', border: '1px solid #2a2d3a', borderRadius: 6, padding: '8px 12px', fontSize: '0.8rem' }}>
+        <div style={{ color: '#9ca3af', marginBottom: 4 }}>{label}</div>
+        {payload.map((p, i) => (
+          <div key={i} style={{ color: p.fill, marginBottom: 2 }}>
+            {p.dataKey}: <strong>{p.value != null ? p.value.toFixed(2) : 'N/A'}</strong>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  return null
+}
+
+// ─── Detail Tab ──────────────────────────────────────────────────────────────
+
+function DetailTab() {
   const [tickers, setTickers] = useState([null, null, null])
   const [stocks, setStocks] = useState([null, null, null])
   const [loadings, setLoadings] = useState([false, false, false])
@@ -146,39 +322,34 @@ function ComparePage() {
   }, [tickers.join(',')])
 
   const activeStocks = stocks.filter(Boolean)
+  const activeTickers = tickers.filter((t, i) => stocks[i] != null)
+  const activeStocksData = stocks.filter(Boolean)
+  const activeColors = stocks.map((s, i) => s ? STOCK_COLORS[i] : null).filter(Boolean)
 
-  // Build grouped chart data
-  const chartData = [
-    { metric: 'TTM PE' },
-    { metric: 'Forward PE' },
-    { metric: '2yr Forward PE' },
-  ]
+  // Build per-category bar charts
+  const categoryCharts = CATEGORIES.map(cat => {
+    const catMetrics = METRICS.filter(m => m.category === cat)
+    // Filter metrics where at least one stock has a non-null value
+    const validMetrics = catMetrics.filter(m =>
+      stocks.some(s => s != null && s[m.key] != null)
+    )
+    if (validMetrics.length === 0) return null
 
-  stocks.forEach((s, i) => {
-    if (!s) return
-    chartData[0][s.ticker] = s.trailingPE
-    chartData[1][s.ticker] = s.forwardPE
-    chartData[2][s.ticker] = s.twoYearForwardPE
-  })
+    const chartData = validMetrics.map(m => {
+      const entry = { metric: m.label }
+      stocks.forEach((s, i) => {
+        if (s != null && s[m.key] != null) {
+          entry[s.ticker] = m.pct ? s[m.key] * 100 : s[m.key]
+        }
+      })
+      return entry
+    })
 
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div style={{ background: '#232635', border: '1px solid #2a2d3a', borderRadius: 6, padding: '8px 12px', fontSize: '0.8rem' }}>
-          <div style={{ color: '#9ca3af', marginBottom: 4 }}>{label}</div>
-          {payload.map((p, i) => (
-            <div key={i} style={{ color: p.fill, marginBottom: 2 }}>
-              {p.dataKey}: <strong>{p.value != null ? p.value.toFixed(1) : 'N/A'}</strong>
-            </div>
-          ))}
-        </div>
-      )
-    }
-    return null
-  }
+    return { cat, chartData, validMetrics }
+  }).filter(Boolean)
 
   return (
-    <div className="compare-page">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div className="compare-slots-row">
         {[0, 1, 2].map(i => (
           <TickerSlot
@@ -196,19 +367,12 @@ function ComparePage() {
       {activeStocks.length > 0 && (
         <>
           <div className="panel">
-            <div className="pe-section-title">PE Comparison</div>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData} margin={{ top: 8, right: 24, left: 0, bottom: 4 }} barGap={4} barCategoryGap="28%">
-                <CartesianGrid strokeDasharray="3 3" stroke="#2a2d3a" vertical={false} />
-                <XAxis dataKey="metric" tick={{ fill: '#9ca3af', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                <Legend wrapperStyle={{ fontSize: '0.8rem', color: '#9ca3af', paddingTop: '0.5rem' }} />
-                {stocks.map((s, i) => s && (
-                  <Bar key={s.ticker} dataKey={s.ticker} fill={STOCK_COLORS[i]} radius={[4, 4, 0, 0]} maxBarSize={60} />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="pe-section-title">Metrics Comparison</div>
+            <MetricsTable
+              stocksData={stocks}
+              tickers={tickers.map((t, i) => stocks[i] ? t : null).filter(Boolean)}
+              colors={stocks.map((s, i) => s ? STOCK_COLORS[i] : null).filter(Boolean)}
+            />
           </div>
 
           <div className="panel">
@@ -220,40 +384,58 @@ function ComparePage() {
             </div>
           </div>
 
-          <div className="panel">
-            <div className="pe-section-title">Side-by-Side Metrics</div>
-            <div className="compare-metrics-grid">
-              <div className="compare-metrics-header">
-                <div />
-                {stocks.map((s, i) => s && (
-                  <div key={i} style={{ color: STOCK_COLORS[i], fontWeight: 700 }}>{s.ticker}</div>
-                ))}
-              </div>
-              {[
-                { label: 'TTM PE', key: 'trailingPE' },
-                { label: 'Forward PE', key: 'forwardPE' },
-                { label: '2yr Forward PE', key: 'twoYearForwardPE' },
-                { label: 'Sector Avg PE', key: 'sectorPE' },
-                { label: 'Sector', key: 'sector' },
-                { label: 'Industry', key: 'industry' },
-              ].map(row => (
-                <div key={row.label} className="compare-metrics-row">
-                  <div className="compare-metrics-label">{row.label}</div>
-                  {stocks.map((s, i) => (
-                    <div key={i} className="compare-metrics-value">
-                      {s ? (s[row.key] != null ? (typeof s[row.key] === 'number' ? s[row.key].toFixed(1) : s[row.key]) : 'N/A') : '—'}
-                    </div>
+          {categoryCharts.map(({ cat, chartData }) => (
+            <div key={cat} className="panel">
+              <div className="pe-section-title">{cat}</div>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartData} margin={{ top: 8, right: 24, left: 0, bottom: 4 }} barGap={4} barCategoryGap="28%">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2a2d3a" vertical={false} />
+                  <XAxis dataKey="metric" tick={{ fill: '#9ca3af', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+                  <Legend wrapperStyle={{ fontSize: '0.8rem', color: '#9ca3af', paddingTop: '0.5rem' }} />
+                  {stocks.map((s, i) => s && (
+                    <Bar key={s.ticker} dataKey={s.ticker} fill={STOCK_COLORS[i]} radius={[4, 4, 0, 0]} maxBarSize={60} />
                   ))}
-                </div>
-              ))}
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-          </div>
+          ))}
         </>
       )}
 
       {activeStocks.length === 0 && (
         <div className="empty-state">Enter up to 3 tickers above to compare.</div>
       )}
+    </div>
+  )
+}
+
+// ─── ComparePage ─────────────────────────────────────────────────────────────
+
+function ComparePage({ positions }) {
+  const [subTab, setSubTab] = useState('overview')
+
+  return (
+    <div className="compare-page">
+      {/* Sub-tab toggle */}
+      <div className="compare-subtabs">
+        <button
+          className={`compare-subtab ${subTab === 'overview' ? 'active' : ''}`}
+          onClick={() => setSubTab('overview')}
+        >
+          Portfolio Overview
+        </button>
+        <button
+          className={`compare-subtab ${subTab === 'detail' ? 'active' : ''}`}
+          onClick={() => setSubTab('detail')}
+        >
+          Detail Compare
+        </button>
+      </div>
+
+      {subTab === 'overview' && <OverviewTab positions={positions || []} />}
+      {subTab === 'detail' && <DetailTab />}
     </div>
   )
 }

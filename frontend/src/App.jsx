@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
-import StockChart from './components/StockChart'
-import PEPanel from './components/PEPanel'
+import StockDetail from './components/StockDetail'
 import ComparePage from './components/ComparePage'
 import './App.css'
 
-const DEFAULT_POSITIONS = ['AAPL', 'MSFT', 'NVDA', 'JPM']
+const DEFAULT_POSITIONS = ['AMZN', 'META', 'PLTR', 'AMD', 'ADBE', 'CRM', 'HNST', 'PATH', 'CAKE', 
+'UNH', 'NKE', 'CELH', 'RZLV', 'GOOG', 'NVDA', 'SOFI']
 const STORAGE_KEY = 'portfolio_positions'
 
 function App() {
@@ -89,10 +89,7 @@ function App() {
             />
             <main className="main-content">
               {selectedTicker ? (
-                <>
-                  <StockChart ticker={selectedTicker} />
-                  <PEPanel ticker={selectedTicker} />
-                </>
+                <StockDetail ticker={selectedTicker} />
               ) : (
                 <div className="empty-state">
                   <p>Add a stock to your portfolio to get started.</p>
@@ -104,7 +101,7 @@ function App() {
 
         {page === 'compare' && (
           <main className="main-content">
-            <ComparePage />
+            <ComparePage positions={positions} />
           </main>
         )}
       </div>
